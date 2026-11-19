@@ -1,0 +1,1750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grand Theft Auto: San Andreas — Real-World Radar & GPS Navigator</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- Google Fonts: Anton (Pricedown/Impact stand-in), Oswald, Share Tech Mono, Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700&family=Oswald:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --sa-land: #697754;
+      --sa-water: #36495c;
+      --sa-road-fill: #d6d3c9;
+      --sa-road-outline: #141414;
+      --sa-route: #e6d27a;
+      --sa-hud-blue: #90b4d8;
+      --sa-hud-green: #549844;
+      --sa-hud-red: #b43232;
+      --sa-panel-bg: rgba(10, 12, 14, 0.88);
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    input, textarea, select {
+      user-select: text;
+    }
+
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #2b3a4a;
+      font-family: 'Oswald', 'Inter', sans-serif;
+      color: #f3f4f6;
+    }
+
+    /* Classic GTA SA Outlined Typography */
+    .gta-title {
+      font-family: 'Anton', Impact, sans-serif;
+      letter-spacing: 0.04em;
+      text-shadow:
+        -2px -2px 0 #000,
+         2px -2px 0 #000,
+        -2px  2px 0 #000,
+         2px  2px 0 #000,
+         0px  3px 0 #000;
+    }
+
+    .gta-hud-text {
+      font-family: 'Anton', Impact, sans-serif;
+      letter-spacing: 0.03em;
+      text-shadow:
+        -1.5px -1.5px 0 #000,
+         1.5px -1.5px 0 #000,
+        -1.5px  1.5px 0 #000,
+         1.5px  1.5px 0 #000,
+         0px    2px 0 #000;
+    }
+
+    .gta-menu-header {
+      font-family: 'Anton', Impact, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #90b4d8;
+      text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+    }
+
+    /* Map Container & GTA San Andreas Tile Styling */
+    #map {
+      width: 100vw;
+      height: 100vh;
+      background: #36495c;
+      z-index: 1;
+    }
+
+    /* Custom CSS Filter to transform CartoDB Voyager/Positron into 2004 GTA San Andreas Radar Palette */
+    .gta-sa-tiles {
+      filter:
+        sepia(0.55)
+        hue-rotate(38deg)
+        saturate(1.45)
+        contrast(1.38)
+        brightness(0.76);
+      transition: filter 0.4s ease;
+    }
+
+    /* ROCKETMAN Aerial / Satellite Mode */
+    .gta-satellite-tiles {
+      filter: contrast(1.18) saturate(1.15) brightness(0.92);
+    }
+
+    /* Subtle CRT / PS2 Scanline Grain Overlay */
+    .ps2-scanlines {
+      pointer-events: none;
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%,
+        rgba(0, 0, 0, 0.14) 50%
+      );
+      background-size: 100% 3px;
+      z-index: 400;
+    }
+
+    /* GTA SA Menu Panel & Scrollbars */
+    .sa-panel {
+      background: var(--sa-panel-bg);
+      border: 2px solid #000;
+      box-shadow: 0 0 0 1px rgba(144, 180, 216, 0.25), 0 10px 25px rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(6px);
+    }
+
+    .sa-tab {
+      font-family: 'Anton', Impact, sans-serif;
+      letter-spacing: 0.05em;
+      color: #6b7280;
+      transition: all 0.12s ease;
+      text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+    }
+
+    .sa-tab:hover, .sa-tab.active {
+      color: #90b4d8;
+      transform: scale(1.04);
+    }
+
+    .sa-list-item {
+      border-left: 3px solid transparent;
+      transition: background 0.1s ease, color 0.1s ease;
+    }
+
+    .sa-list-item:hover {
+      background: rgba(144, 180, 216, 0.22);
+      border-left-color: #90b4d8;
+      color: #ffffff;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0d1014;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #4b647d;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #90b4d8;
+    }
+
+    /* Custom Leaflet Overrides */
+    .leaflet-control-attribution {
+      background: rgba(0, 0, 0, 0.7) !important;
+      color: #9ca3af !important;
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+    }
+    .leaflet-control-attribution a {
+      color: #90b4d8 !important;
+    }
+
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+      background: rgba(12, 14, 18, 0.94) !important;
+      color: #f3f4f6 !important;
+      border: 2px solid #000 !important;
+      border-radius: 6px !important;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85) !important;
+      font-family: 'Oswald', sans-serif !important;
+    }
+
+    /* Radar Blip Pulse Animation */
+    @keyframes blipPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.16); }
+    }
+
+    .sa-blip-pulse {
+      animation: blipPulse 1.6s infinite ease-in-out;
+    }
+
+    /* Cheat Activated Banner Animation */
+    @keyframes cheatSlide {
+      0% { opacity: 0; transform: translateY(-15px); }
+      15% { opacity: 1; transform: translateY(0); }
+      85% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-10px); }
+    }
+
+    .cheat-banner-anim {
+      animation: cheatSlide 3.4s forwards ease-out;
+    }
+
+    /* North Radar Ring Indicator */
+    .radar-north-badge {
+      background: #000;
+      color: #fff;
+      border: 2px solid #d1d5db;
+      font-family: 'Anton', sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <!-- PS2 Subtle Scanline Overlay -->
+  <div class="ps2-scanlines fixed inset-0"></div>
+
+  <!-- Main Interactive Leaflet Map -->
+  <div id="map"></div>
+
+  <!-- Cheat Code / Mission Notification Toast (Top-Left under header) -->
+  <div id="toast-container" class="fixed top-20 left-4 z-[1100] pointer-events-none flex flex-col gap-2 max-w-xs sm:max-w-sm"></div>
+
+  <!-- =========================================================
+       TOP-RIGHT CLASSIC GTA SAN ANDREAS HUD OVERLAY
+       ========================================================= -->
+  <div id="gta-hud" class="fixed top-3 right-3 z-[1000] flex flex-col items-end pointer-events-none select-none transition-opacity duration-300">
+    <!-- Top Row: Weapon/GPS Radar Icon + Clock & Status -->
+    <div class="flex items-center gap-3 pointer-events-auto">
+      <!-- Audio / Cheat / HUD Action Pills -->
+      <div class="flex items-center gap-1.5 bg-black/80 border-2 border-black px-2 py-1 rounded-md shadow-lg">
+        <button id="btn-audio-toggle" onclick="toggleAudio()" title="Toggle GTA SA Menu SFX" class="text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[#90b4d8] font-bold tracking-wider transition">
+          🔊 SFX ON
+        </button>
+        <button id="btn-locate-me" onclick="locatePlayerGPS()" title="Sync Player Blip to Real GPS" class="text-xs px-2 py-1 rounded bg-[#549844] hover:bg-[#63b051] text-white font-bold tracking-wider transition">
+          📍 CJ GPS
+        </button>
+      </div>
+
+      <!-- Classic GTA SA Radar Fist/GPS Emblem Box -->
+      <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/85 border-[3px] border-[#90b4d8] shadow-xl flex items-center justify-center relative">
+        <svg viewBox="0 0 36 36" class="w-8 h-8">
+          <circle cx="18" cy="18" r="15" fill="#1d2833" stroke="#000" stroke-width="2"/>
+          <polygon points="18,6 26,27 18,22 10,27" fill="#ffffff" stroke="#000" stroke-width="2.2" stroke-linejoin="round"/>
+        </svg>
+        <span class="radar-north-badge absolute -top-2 text-[10px] px-1.5 rounded-full leading-tight">N</span>
+      </div>
+    </div>
+
+    <!-- In-Game Clock -->
+    <div id="hud-clock" class="gta-hud-text text-2xl sm:text-3xl text-[#c5d6e8] leading-none mt-1">
+      12:00
+    </div>
+
+    <!-- Green Money / Distance Counter -->
+    <div id="hud-money-distance" class="gta-hud-text text-xl sm:text-2xl text-[#549844] leading-tight">
+      $00000350 • 0.0 KM
+    </div>
+
+    <!-- Wanted Stars / Route Difficulty Indicator -->
+    <div id="hud-stars" class="flex items-center gap-1 mt-0.5 text-lg sm:text-xl drop-shadow-[0_2px_2px_rgba(0,0,0,1)]">
+      <span class="text-gray-600">★</span>
+      <span class="text-gray-600">★</span>
+      <span class="text-gray-600">★</span>
+      <span class="text-gray-600">★</span>
+      <span class="text-gray-600">★</span>
+      <span class="text-gray-600">★</span>
+    </div>
+
+    <!-- Bottom-Right Zone / District Name (Classic GTA SA Bold White/Blue Text) -->
+    <div class="fixed bottom-6 right-4 z-[1000] text-right pointer-events-none max-w-[75vw]">
+      <div id="hud-vehicle-label" class="gta-hud-text text-lg sm:text-2xl text-[#549844] uppercase tracking-wide">
+        INFERNUS (CAR)
+      </div>
+      <div id="hud-zone-name" class="gta-hud-text text-2xl sm:text-4xl text-white uppercase tracking-wider leading-none">
+        SANTA MARIA BEACH
+      </div>
+      <div id="hud-subzone-name" class="gta-hud-text text-xs sm:text-sm text-[#90b4d8] uppercase tracking-widest mt-0.5">
+        LOS SANTOS • REAL-WORLD RADAR
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       TOP-LEFT PAUSE MENU & RADAR GPS DRAWER
+       ========================================================= -->
+  <div id="pause-menu-wrapper" class="fixed top-3 left-3 z-[1000] w-[calc(100vw-1.5rem)] sm:w-[410px] max-h-[calc(100vh-1.5rem)] flex flex-col transition-all duration-300">
+    <!-- Top Header Bar (Always Accessible) -->
+    <div class="sa-panel rounded-t-lg px-3.5 py-2.5 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <button id="btn-toggle-drawer" onclick="toggleDrawer()" class="px-2.5 py-1 rounded bg-[#90b4d8] hover:bg-[#a8c8e8] text-black font-bold text-xs uppercase tracking-wider shadow transition">
+          ☰ MENU
+        </button>
+        <div>
+          <h1 class="gta-menu-header text-xl sm:text-2xl leading-none">SAN ANDREAS GPS</h1>
+          <p class="text-[11px] text-gray-400 tracking-wider uppercase">Real-World Radar &amp; Route Engine</p>
+        </div>
+      </div>
+
+      <!-- Quick Cheat Code Input -->
+      <div class="flex items-center gap-1">
+        <input
+          id="cheat-input"
+          type="text"
+          maxlength="12"
+          placeholder="CHEAT..."
+          title="Try: ROCKETMAN, HESOYAM, AEZAKMI, FULLCLIP"
+          class="w-20 sm:w-24 bg-black/80 border border-gray-700 focus:border-[#90b4d8] rounded px-2 py-1 text-xs font-mono uppercase text-[#e6d27a] placeholder-gray-500 outline-none"
+        />
+      </div>
+    </div>
+
+    <!-- Collapsible Pause Menu Body -->
+    <div id="drawer-body" class="sa-panel border-t-0 rounded-b-lg flex flex-col overflow-hidden max-h-[78vh]">
+      <!-- Classic GTA SA Horizontal Tab Bar -->
+      <div class="flex items-center justify-between bg-black/90 px-2 py-1.5 border-b border-gray-800 overflow-x-auto gap-1">
+        <button onclick="switchTab('nav')" id="tab-nav" class="sa-tab active text-sm sm:text-base px-2 py-0.5 whitespace-nowrap">GPS / ROUTE</button>
+        <button onclick="switchTab('bookmarks')" id="tab-bookmarks" class="sa-tab text-sm sm:text-base px-2 py-0.5 whitespace-nowrap">BOOKMARKS</button>
+        <button onclick="switchTab('legend')" id="tab-legend" class="sa-tab text-sm sm:text-base px-2 py-0.5 whitespace-nowrap">LEGEND</button>
+        <button onclick="switchTab('stats')" id="tab-stats" class="sa-tab text-sm sm:text-base px-2 py-0.5 whitespace-nowrap">STATS / CHEATS</button>
+      </div>
+
+      <!-- =====================================
+           TAB 1: NAVIGATION / GPS & SEARCH
+           ===================================== -->
+      <div id="panel-nav" class="p-3 overflow-y-auto space-y-3">
+        <!-- Global Real-World Search Bar (Nominatim) -->
+        <div class="relative">
+          <label class="block text-[11px] uppercase tracking-wider text-[#90b4d8] mb-1">Search Any Real-World Location / Street</label>
+          <div class="flex gap-1.5">
+            <input
+              id="search-input"
+              type="text"
+              placeholder="e.g. Santa Monica Pier, Tokyo Tower, Eiffel Tower..."
+              class="w-full bg-black/85 border border-gray-700 focus:border-[#90b4d8] rounded px-3 py-2 text-sm text-white placeholder-gray-500 outline-none font-sans"
+            />
+            <button onclick="executeSearch()" class="px-3 py-2 bg-[#90b4d8] hover:bg-[#a9cae8] text-black font-bold text-xs uppercase rounded tracking-wider transition">
+              FIND
+            </button>
+          </div>
+          <!-- Search Autocomplete Dropdown -->
+          <div id="search-results" class="hidden mt-1 bg-black/95 border border-[#90b4d8]/50 rounded max-h-48 overflow-y-auto divide-y divide-gray-800 shadow-2xl"></div>
+        </div>
+
+        <!-- Origin & Destination Cards -->
+        <div class="bg-black/60 border border-gray-800 rounded-md p-2.5 space-y-2">
+          <!-- Origin -->
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="w-3 h-3 rounded-full bg-white border-2 border-black inline-block shrink-0"></span>
+              <div class="truncate">
+                <div class="text-[10px] uppercase text-gray-400">Origin (Player CJ)</div>
+                <div id="origin-label" class="text-xs sm:text-sm text-white truncate">Santa Maria Beach (Los Angeles)</div>
+              </div>
+            </div>
+            <button onclick="setOriginToPlayer()" class="text-[11px] px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[#90b4d8] shrink-0 uppercase">
+              Sync CJ
+            </button>
+          </div>
+
+          <div class="border-t border-gray-800"></div>
+
+          <!-- Destination -->
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="w-3 h-3 bg-[#b43232] border-2 border-black inline-block shrink-0"></span>
+              <div class="truncate">
+                <div class="text-[10px] uppercase text-gray-400">Red Target Waypoint</div>
+                <div id="dest-label" class="text-xs sm:text-sm text-[#e6d27a] truncate">Click map or pick a destination</div>
+              </div>
+            </div>
+            <button onclick="clearRoute()" class="text-[11px] px-2 py-1 rounded bg-red-950/80 hover:bg-red-900 text-red-300 shrink-0 uppercase">
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <!-- Travel Mode Selector (GTA SA Vehicles) -->
+        <div>
+          <label class="block text-[11px] uppercase tracking-wider text-gray-400 mb-1">Select Vehicle / Travel Mode</label>
+          <div class="grid grid-cols-3 gap-1.5">
+            <button onclick="setTravelMode('driving')" id="mode-driving" class="mode-btn py-2 px-2 rounded border border-[#90b4d8] bg-[#90b4d8]/25 text-white text-xs font-bold uppercase flex flex-col items-center gap-0.5 transition">
+              <span>🏎️ INFERNUS</span>
+              <span class="text-[10px] text-gray-300 font-sans">Driving</span>
+            </button>
+            <button onclick="setTravelMode('cycling')" id="mode-cycling" class="mode-btn py-2 px-2 rounded border border-gray-700 bg-black/60 text-gray-400 hover:text-white text-xs font-bold uppercase flex flex-col items-center gap-0.5 transition">
+              <span>🚲 BMX</span>
+              <span class="text-[10px] text-gray-400 font-sans">Cycling</span>
+            </button>
+            <button onclick="setTravelMode('walking')" id="mode-walking" class="mode-btn py-2 px-2 rounded border border-gray-700 bg-black/60 text-gray-400 hover:text-white text-xs font-bold uppercase flex flex-col items-center gap-0.5 transition">
+              <span>🏃 CJ SPRINT</span>
+              <span class="text-[10px] text-gray-400 font-sans">Walking</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Route Alternatives & Summary Box -->
+        <div id="route-summary-box" class="hidden bg-black/75 border border-[#e6d27a]/60 rounded-md p-2.5 space-y-2">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-[11px] uppercase text-[#e6d27a] tracking-wider">Best GPS Route Calculated</div>
+              <div id="route-stats-main" class="text-base sm:text-lg font-bold text-white">0.0 km • 0 mins</div>
+            </div>
+            <button id="btn-drive-sim" onclick="toggleDriveSimulation()" class="px-3 py-1.5 rounded bg-[#549844] hover:bg-[#64b152] text-white font-bold text-xs uppercase tracking-wider shadow transition">
+              ▶ DRIVE SIM
+            </button>
+          </div>
+
+          <!-- Route Alternative Pills (Fastest vs Alternative) -->
+          <div id="route-alternatives-bar" class="flex gap-1.5 flex-wrap"></div>
+
+          <!-- Active Drive Simulation Progress Bar -->
+          <div id="sim-progress-wrapper" class="hidden space-y-1 pt-1 border-t border-gray-800">
+            <div class="flex justify-between text-[11px] text-[#90b4d8]">
+              <span id="sim-current-instruction">Proceed along marked yellow route</span>
+              <span id="sim-percent">0%</span>
+            </div>
+            <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+              <div id="sim-progress-bar" class="h-full bg-[#e6d27a] transition-all duration-150" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- Turn-by-Turn Directions List -->
+          <div class="pt-1">
+            <div class="text-[11px] uppercase text-gray-400 mb-1">Turn-by-Turn Mission Directions</div>
+            <div id="turn-by-turn-list" class="max-h-44 overflow-y-auto space-y-1 pr-1"></div>
+          </div>
+        </div>
+
+        <!-- Helpful Hint -->
+        <div class="text-[11px] text-gray-400 bg-black/50 rounded px-2.5 py-2 border border-gray-800/80 font-sans">
+          💡 <strong class="text-gray-200">Tip:</strong> Click anywhere on the map to drop a <span class="text-[#b43232] font-bold">Red Target Waypoint</span>, inspect the real-world street address, or save it as a Safehouse/Bookmark.
+        </div>
+      </div>
+
+      <!-- =====================================
+           TAB 2: BOOKMARKS / SAFEHOUSES MANAGER
+           ===================================== -->
+      <div id="panel-bookmarks" class="hidden p-3 overflow-y-auto space-y-3">
+        <!-- Add New Bookmark Form -->
+        <div class="bg-black/65 border border-gray-800 rounded-md p-2.5 space-y-2">
+          <div class="text-xs uppercase text-[#90b4d8] tracking-wider">Save Current Target / Map Center</div>
+          <div class="flex gap-1.5">
+            <input id="bm-name-input" type="text" placeholder="Bookmark Name (e.g. Grove Street)" class="w-full bg-black/90 border border-gray-700 rounded px-2.5 py-1.5 text-xs text-white font-sans outline-none focus:border-[#90b4d8]" />
+            <select id="bm-icon-select" class="bg-black/90 border border-gray-700 rounded px-2 py-1.5 text-xs text-[#e6d27a] outline-none">
+              <option value="safehouse">💾 Safehouse</option>
+              <option value="burgershot">🍔 Burger Shot</option>
+              <option value="cluckin">🍗 Cluckin' Bell</option>
+              <option value="paynspray">🎨 Pay 'n' Spray</option>
+              <option value="ammunation">🔫 Ammu-Nation</option>
+              <option value="gym">💪 Ganton Gym</option>
+              <option value="airport">✈️ Airport</option>
+              <option value="star">⭐ VIP Blip</option>
+            </select>
+          </div>
+          <div class="flex gap-1.5">
+            <button onclick="saveCurrentBookmark()" class="w-full py-1.5 rounded bg-[#549844] hover:bg-[#63b051] text-white font-bold text-xs uppercase tracking-wider transition">
+              + SAVE TO RADAR BLIPS
+            </button>
+          </div>
+        </div>
+
+        <!-- Saved Bookmarks List -->
+        <div class="flex items-center justify-between">
+          <span class="text-xs uppercase text-gray-400 tracking-wider">Saved San Andreas Locations</span>
+          <div class="flex gap-1">
+            <button onclick="exportBookmarksJSON()" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[#90b4d8] uppercase">Export JSON</button>
+            <button onclick="resetDefaultBookmarks()" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-gray-300 uppercase">Reset</button>
+          </div>
+        </div>
+        <div id="bookmarks-list" class="space-y-1.5 max-h-64 overflow-y-auto pr-1"></div>
+      </div>
+
+      <!-- =====================================
+           TAB 3: RADAR LEGEND & BLIP FILTERS
+           ===================================== -->
+      <div id="panel-legend" class="hidden p-3 overflow-y-auto space-y-2.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs uppercase text-[#90b4d8] tracking-wider">Radar Blip Visibility Filters</span>
+          <button onclick="toggleAllLegend(true)" class="text-[11px] text-[#e6d27a] hover:underline uppercase">Show All</button>
+        </div>
+        <div id="legend-items-container" class="grid grid-cols-1 gap-1.5"></div>
+      </div>
+
+      <!-- =====================================
+           TAB 4: STATS & GTA SA CHEAT CODES
+           ===================================== -->
+      <div id="panel-stats" class="hidden p-3 overflow-y-auto space-y-3">
+        <!-- Player Stats -->
+        <div class="bg-black/65 border border-gray-800 rounded-md p-2.5 space-y-2">
+          <div class="text-xs uppercase text-[#90b4d8] tracking-wider">CJ Navigation &amp; Exploration Stats</div>
+          <div class="space-y-1.5 text-xs">
+            <div class="flex justify-between">
+              <span class="text-gray-400">TOTAL DISTANCE TRAVELED</span>
+              <span id="stat-total-dist" class="text-white font-bold">0.00 KM</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">WAYPOINTS SET</span>
+              <span id="stat-waypoints" class="text-white font-bold">0</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">SAVED SAFEHOUSES / BLIPS</span>
+              <span id="stat-bookmarks" class="text-white font-bold">0</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">CURRENT RESPECT / STAMINA</span>
+              <span class="text-[#549844] font-bold">100% MAX</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Cheat Codes -->
+        <div class="bg-black/65 border border-gray-800 rounded-md p-2.5 space-y-2">
+          <div class="text-xs uppercase text-[#e6d27a] tracking-wider">Classic Cheat Codes (Click to Activate)</div>
+          <div class="grid grid-cols-1 gap-1.5 text-xs">
+            <button onclick="triggerCheat('ROCKETMAN')" class="sa-list-item text-left p-2 rounded bg-black/60 flex justify-between items-center">
+              <span class="font-mono font-bold text-[#e6d27a]">ROCKETMAN</span>
+              <span class="text-gray-300">Toggle Aerial Satellite / Radar View</span>
+            </button>
+            <button onclick="triggerCheat('HESOYAM')" class="sa-list-item text-left p-2 rounded bg-black/60 flex justify-between items-center">
+              <span class="font-mono font-bold text-[#e6d27a]">HESOYAM</span>
+              <span class="text-gray-300">+$250,000 Cash &amp; Center on Player</span>
+            </button>
+            <button onclick="triggerCheat('AEZAKMI')" class="sa-list-item text-left p-2 rounded bg-black/60 flex justify-between items-center">
+              <span class="font-mono font-bold text-[#e6d27a]">AEZAKMI</span>
+              <span class="text-gray-300">Clear Wanted Stars &amp; Toggle Clean HUD</span>
+            </button>
+            <button onclick="triggerCheat('YECGAA')" class="sa-list-item text-left p-2 rounded bg-black/60 flex justify-between items-center">
+              <span class="font-mono font-bold text-[#e6d27a]">YECGAA</span>
+              <span class="text-gray-300">Teleport CJ to Red Target Waypoint</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       BOTTOM-LEFT COMPACT RADAR CONTROLS (ZOOM / RE-CENTER)
+       ========================================================= -->
+  <div class="fixed bottom-6 left-3 z-[1000] flex items-center gap-2">
+    <button onclick="map.zoomIn(); playSound('blip')" title="Zoom In" class="w-10 h-10 rounded-md bg-black/85 border-2 border-[#90b4d8] text-white font-bold text-xl hover:bg-slate-800 shadow-lg flex items-center justify-center">
+      +
+    </button>
+    <button onclick="map.zoomOut(); playSound('blip')" title="Zoom Out" class="w-10 h-10 rounded-md bg-black/85 border-2 border-[#90b4d8] text-white font-bold text-xl hover:bg-slate-800 shadow-lg flex items-center justify-center">
+      −
+    </button>
+    <button onclick="centerOnPlayer()" title="Center Radar on CJ" class="px-3 h-10 rounded-md bg-black/85 border-2 border-[#90b4d8] text-[#90b4d8] font-bold text-xs uppercase tracking-wider hover:bg-slate-800 shadow-lg flex items-center gap-1.5">
+      <span>🎯</span>
+      <span class="hidden sm:inline">Center CJ</span>
+    </button>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       1. WEB AUDIO API — SYNTHESIZED 2004 GTA SAN ANDREAS MENU SOUND EFFECTS
+       ========================================================================== */
+    let audioCtx = null;
+    let sfxEnabled = true;
+
+    function initAudio() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) audioCtx = new AudioContext();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playSound(type) {
+      if (!sfxEnabled) return;
+      try {
+        initAudio();
+        if (!audioCtx) return;
+
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'blip') {
+          // Classic SA Menu Hover/Tab Blip
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(580, now);
+          osc.frequency.exponentialRampToValueAtTime(760, now + 0.045);
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+          osc.start(now);
+          osc.stop(now + 0.055);
+        } else if (type === 'select') {
+          // Classic SA Confirm / Waypoint Placed Chime
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(523.25, now); // C5
+          osc.frequency.setValueAtTime(783.99, now + 0.06); // G5
+          gain.gain.setValueAtTime(0.11, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+          osc.start(now);
+          osc.stop(now + 0.19);
+        } else if (type === 'back') {
+          // Classic SA Cancel / Back Sound
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(420, now);
+          osc.frequency.exponentialRampToValueAtTime(240, now + 0.09);
+          gain.gain.setValueAtTime(0.09, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+          osc.start(now);
+          osc.stop(now + 0.11);
+        } else if (type === 'cheat') {
+          // GTA SA "Cheat Activated" / Mission Passed Arpeggio
+          const notes = [440, 554.37, 659.25, 880];
+          notes.forEach((freq, idx) => {
+            const o = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            o.type = 'triangle';
+            o.connect(g);
+            g.connect(audioCtx.destination);
+            const t = now + idx * 0.065;
+            o.frequency.setValueAtTime(freq, t);
+            g.gain.setValueAtTime(0.1, t);
+            g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+            o.start(t);
+            o.stop(t + 0.24);
+          });
+        }
+      } catch (e) {
+        // Ignore audio block errors before first user interaction
+      }
+    }
+
+    function toggleAudio() {
+      sfxEnabled = !sfxEnabled;
+      const btn = document.getElementById('btn-audio-toggle');
+      btn.textContent = sfxEnabled ? '🔊 SFX ON' : '🔇 MUTED';
+      if (sfxEnabled) playSound('select');
+    }
+
+    /* ==========================================================================
+       2. CUSTOM GTA SAN ANDREAS SVG RADAR BLIPS
+       ========================================================================== */
+    const BLIP_TYPES = {
+      safehouse: {
+        label: 'Safehouse (Save Game)',
+        color: '#46a049',
+        svg: `<svg viewBox="0 0 32 32" width="28" height="28"><rect x="3" y="3" width="26" height="26" rx="4" fill="#46a049" stroke="#000" stroke-width="3"/><rect x="8" y="6" width="16" height="9" fill="#fff" stroke="#000" stroke-width="1.5"/><rect x="10" y="18" width="12" height="8" fill="#d1d5db" stroke="#000" stroke-width="1.5"/></svg>`
+      },
+      burgershot: {
+        label: 'Burger Shot',
+        color: '#e07a22',
+        svg: `<svg viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="13" fill="#e07a22" stroke="#000" stroke-width="3"/><path d="M8 14 C8 9, 24 9, 24 14 Z" fill="#facc15" stroke="#000" stroke-width="1.5"/><rect x="7" y="15" width="18" height="3.5" rx="1.5" fill="#78350f" stroke="#000" stroke-width="1.2"/><path d="M8 20 L24 20 C24 23, 8 23, 8 20 Z" fill="#facc15" stroke="#000" stroke-width="1.5"/></svg>`
+      },
+      cluckin: {
+        label: "Cluckin' Bell",
+        color: '#eab308',
+        svg: `<svg viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="13" fill="#eab308" stroke="#000" stroke-width="3"/><polygon points="16,7 23,22 9,22" fill="#dc2626" stroke="#000" stroke-width="1.8"/><circle cx="16" cy="15" r="3" fill="#fff"/></svg>`
+      },
+      paynspray: {
+        label: "Pay 'n' Spray",
+        color: '#3b82f6',
+        svg: `<svg viewBox="0 0 32 32" width="28" height="28"><rect x="3" y="3" width="26" height="26" rx="4" fill="#2563eb" stroke="#000" stroke-width="3"/><rect x="11" y="11" width="10" height="14" rx="2" fill="#e5e7eb" stroke="#000" stroke-width="1.5"/><rect x="14" y="7" width="4" height="4" fill="#ef4444" stroke="#000" stroke-width="1.2"/></svg>`
+      },
+      ammunation: {
+        label: 'Ammu-Nation',
+        color: '#dc2626',
+        svg: `<svg viewBox="0 0 32 32" width="28" height="28"><rect x="3" y="3" width="26" height="26" rx="4" fill="#1f2937" stroke="#000" stroke-width="3"/><path d="M8 12 H24 V16 H15 L13 23 H9 L11 16 H8 Z" fill="#facc15" stroke="#000" stroke-width="1.4"/></svg>`
+      },
+      gym: {
+        label: 'Ganton Gym',
+        color: '#8b5cf6',
+        svg: `<svg viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="13" fill="#7c3aed" stroke="#000" stroke-width="3"/><rect x="7" y="11" width="4" height="10" fill="#fff" stroke="#000" stroke-width="1.5"/><rect x="21" y="11" width="4" height="10" fill="#fff" stroke="#000" stroke-width="1.5"/><rect x="11" y="14.5" width="10" height="3" fill="#fff" stroke="#000" stroke-width="1.2"/></svg>`
+      },
+      airport: {
+        label: 'Airport / Helipad',
+        color: '#06b6d4',
+        svg: `<svg viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="13" fill="#0891b2" stroke="#000" stroke-width="3"/><path d="M16 7 L18 14 L25 17 L25 19 L18 18 L18 23 L21 25 L21 26 L16 25 L11 26 L11 25 L14 23 L14 18 L7 19 L7 17 L14 14 Z" fill="#fff" stroke="#000" stroke-width="1.2"/></svg>`
+      },
+      star: {
+        label: 'VIP / Mission Blip',
+        color: '#e6d27a',
+        svg: `<svg viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="13" fill="#111827" stroke="#000" stroke-width="3"/><polygon points="16,6 19,13 26,13 20.5,17.5 22.5,24.5 16,20 9.5,24.5 11.5,17.5 6,13 13,13" fill="#e6d27a" stroke="#000" stroke-width="1.4"/></svg>`
+      }
+    };
+
+    function createPlayerIcon(headingDeg = 0) {
+      return L.divIcon({
+        className: 'gta-player-blip',
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+        html: `
+          <div style="transform: rotate(${headingDeg}deg); transition: transform 0.2s linear; width: 34px; height: 34px; display:flex; align-items:center; justify-content:center;">
+            <svg viewBox="0 0 36 36" width="32" height="32">
+              <polygon points="18,4 29,30 18,24 7,30" fill="#ffffff" stroke="#000000" stroke-width="3.5" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        `
+      });
+    }
+
+    function createTargetIcon() {
+      return L.divIcon({
+        className: 'gta-target-blip sa-blip-pulse',
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+        html: `
+          <svg viewBox="0 0 32 32" width="30" height="30">
+            <rect x="4" y="4" width="24" height="24" fill="#c82828" stroke="#000000" stroke-width="3.5"/>
+            <line x1="16" y1="8" x2="16" y2="24" stroke="#000000" stroke-width="2.5"/>
+            <line x1="8" y1="16" x2="24" y2="16" stroke="#000000" stroke-width="2.5"/>
+          </svg>
+        `
+      });
+    }
+
+    function createBlipDivIcon(typeKey) {
+      const def = BLIP_TYPES[typeKey] || BLIP_TYPES.star;
+      return L.divIcon({
+        className: 'gta-custom-blip',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        html: def.svg
+      });
+    }
+
+    /* ==========================================================================
+       3. APPLICATION STATE & DEFAULT SAN ANDREAS REAL-WORLD LANDMARKS
+       ========================================================================== */
+    const DEFAULT_BOOKMARKS = [
+      {
+        id: 'bm-1',
+        name: 'Santa Maria Beach (Santa Monica Pier)',
+        type: 'star',
+        lat: 34.0092,
+        lng: -118.4976,
+        desc: 'Iconic ferris wheel & boardwalk pier'
+      },
+      {
+        id: 'bm-2',
+        name: 'Grove Street Safehouse (Compton)',
+        type: 'safehouse',
+        lat: 33.8958,
+        lng: -118.2201,
+        desc: 'Grove Street Families home turf'
+      },
+      {
+        id: 'bm-3',
+        name: 'Vinewood Sign (Hollywood)',
+        type: 'star',
+        lat: 34.1341,
+        lng: -118.3215,
+        desc: 'Overlooking Los Santos hills'
+      },
+      {
+        id: 'bm-4',
+        name: 'Verona Beach Gym (Venice Beach)',
+        type: 'gym',
+        lat: 33.9850,
+        lng: -118.4695,
+        desc: 'Outdoor Muscle Beach workout spot'
+      },
+      {
+        id: 'bm-5',
+        name: 'Los Santos Intl Airport (LAX)',
+        type: 'airport',
+        lat: 33.9416,
+        lng: -118.4085,
+        desc: 'Commercial flights & Shamal jets'
+      },
+      {
+        id: 'bm-6',
+        name: "Downtown Pay 'n' Spray",
+        type: 'paynspray',
+        lat: 34.0407,
+        lng: -118.2468,
+        desc: 'Respray vehicle & lose wanted level'
+      },
+      {
+        id: 'bm-7',
+        name: 'Temple Burger Shot',
+        type: 'burgershot',
+        lat: 34.0983,
+        lng: -118.3267,
+        desc: 'Restores health & stamina'
+      }
+    ];
+
+    const state = {
+      playerPos: { lat: 34.0092, lng: -118.4976, label: 'Santa Maria Beach (Santa Monica Pier)' },
+      playerHeading: 45,
+      targetPos: null,
+      travelMode: 'driving', // driving | cycling | walking
+      routes: [],
+      selectedRouteIndex: 0,
+      bookmarks: [],
+      visibleCategories: Object.keys(BLIP_TYPES).reduce((acc, k) => ({ ...acc, [k]: true }), {}),
+      cash: 350,
+      totalDistKm: 0,
+      waypointsSet: 0,
+      wantedStars: 0,
+      satelliteMode: false,
+      cleanHudMode: false,
+      drawerOpen: true,
+      simRunning: false,
+      simTimer: null,
+      simProgress: 0
+    };
+
+    // Load persisted bookmarks & stats
+    function loadPersistedData() {
+      try {
+        const savedBm = localStorage.getItem('gta_sa_bookmarks_v1');
+        state.bookmarks = savedBm ? JSON.parse(savedBm) : [...DEFAULT_BOOKMARKS];
+
+        const savedStats = localStorage.getItem('gta_sa_stats_v1');
+        if (savedStats) {
+          const parsed = JSON.parse(savedStats);
+          state.cash = parsed.cash ?? 350;
+          state.totalDistKm = parsed.totalDistKm ?? 0;
+          state.waypointsSet = parsed.waypointsSet ?? 0;
+        }
+      } catch (e) {
+        state.bookmarks = [...DEFAULT_BOOKMARKS];
+      }
+    }
+
+    function persistData() {
+      try {
+        localStorage.setItem('gta_sa_bookmarks_v1', JSON.stringify(state.bookmarks));
+        localStorage.setItem('gta_sa_stats_v1', JSON.stringify({
+          cash: state.cash,
+          totalDistKm: state.totalDistKm,
+          waypointsSet: state.waypointsSet
+        }));
+      } catch (e) {}
+      updateStatsUI();
+    }
+
+    /* ==========================================================================
+       4. LEAFLET MAP INITIALIZATION & GTA SAN ANDREAS VISUAL LAYER
+       ========================================================================== */
+    let map, radarTileLayer, satelliteTileLayer;
+    let playerMarker = null;
+    let targetMarker = null;
+    let routeLayers = [];
+    let bookmarkMarkersLayer = null;
+
+    function initMap() {
+      map = L.map('map', {
+        center: [state.playerPos.lat, state.playerPos.lng],
+        zoom: 14,
+        zoomControl: false
+      });
+
+      // CartoDB Voyager styled with GTA SA Radar CSS filters
+      radarTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO | GTA SA Radar Theme',
+        subdomains: 'abcd',
+        maxZoom: 19,
+        className: 'gta-sa-tiles'
+      }).addTo(map);
+
+      // Esri World Imagery for ROCKETMAN Aerial Mode
+      satelliteTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri',
+        maxZoom: 19,
+        className: 'gta-satellite-tiles'
+      });
+
+      bookmarkMarkersLayer = L.layerGroup().addTo(map);
+
+      // Draggable Player Blip
+      playerMarker = L.marker([state.playerPos.lat, state.playerPos.lng], {
+        icon: createPlayerIcon(state.playerHeading),
+        draggable: true,
+        zIndexOffset: 1000
+      }).addTo(map);
+
+      playerMarker.bindTooltip('CJ (Drag me or click map to set destination)', { direction: 'top' });
+
+      playerMarker.on('dragend', async (e) => {
+        const { lat, lng } = e.target.getLatLng();
+        playSound('blip');
+        const placeName = await reverseGeocode(lat, lng);
+        setPlayerPosition(lat, lng, placeName, false);
+        if (state.targetPos) calculateBestRoute();
+      });
+
+      // Map Click -> Set Red Target Waypoint & Reverse Geocode
+      map.on('click', async (e) => {
+        const { lat, lng } = e.latlng;
+        playSound('select');
+        const address = await reverseGeocode(lat, lng);
+        setDestination(lat, lng, address);
+      });
+
+      // Update Zone HUD when map pans
+      map.on('moveend', debounce(async () => {
+        const center = map.getCenter();
+        updateZoneHUDFromCoords(center.lat, center.lng);
+      }, 650));
+
+      renderBookmarkMarkers();
+      renderBookmarksList();
+      renderLegend();
+      updateStatsUI();
+      updateZoneHUDFromCoords(state.playerPos.lat, state.playerPos.lng);
+    }
+
+    /* ==========================================================================
+       5. GEOCODING (NOMINATIM API) & ZONE HUD UPDATES
+       ========================================================================== */
+    async function reverseGeocode(lat, lng) {
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+        const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+        if (!res.ok) throw new Error('Reverse geocode failed');
+        const data = await res.json();
+        const addr = data.address || {};
+        const primary = data.name || addr.road || addr.neighbourhood || addr.suburb || addr.city || 'San Andreas Road';
+        const area = addr.suburb || addr.city || addr.town || addr.county || '';
+        return area && primary !== area ? `${primary}, ${area}` : primary;
+      } catch (e) {
+        return `Sector (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+      }
+    }
+
+    async function updateZoneHUDFromCoords(lat, lng) {
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=14`;
+        const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+        if (!res.ok) return;
+        const data = await res.json();
+        const addr = data.address || {};
+        const district = addr.neighbourhood || addr.suburb || addr.city_district || addr.town || addr.city || 'LOS SANTOS';
+        const city = addr.city || addr.county || addr.state || 'SAN ANDREAS';
+
+        document.getElementById('hud-zone-name').textContent = district.toUpperCase();
+        document.getElementById('hud-subzone-name').textContent = `${city.toUpperCase()} • RADAR SECTOR`;
+      } catch (e) {}
+    }
+
+    // Search Input Handler with Debounce
+    const searchInput = document.getElementById('search-input');
+    searchInput.addEventListener('input', debounce(() => {
+      if (searchInput.value.trim().length >= 3) {
+        executeSearch();
+      } else {
+        document.getElementById('search-results').classList.add('hidden');
+      }
+    }, 450));
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') executeSearch();
+    });
+
+    async function executeSearch() {
+      const query = searchInput.value.trim();
+      const resultsBox = document.getElementById('search-results');
+      if (!query) return;
+
+      playSound('blip');
+      resultsBox.innerHTML = `<div class="p-2.5 text-xs text-[#90b4d8] animate-pulse">Scanning San Andreas Satellite Database...</div>`;
+      resultsBox.classList.remove('hidden');
+
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=6`;
+        const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+        const items = await res.json();
+
+        if (!items || items.length === 0) {
+          resultsBox.innerHTML = `<div class="p-2.5 text-xs text-red-400">No sectors found matching "${escapeHtml(query)}".</div>`;
+          return;
+        }
+
+        resultsBox.innerHTML = '';
+        items.forEach((item) => {
+          const lat = parseFloat(item.lat);
+          const lng = parseFloat(item.lon);
+          const shortTitle = item.display_name.split(',')[0];
+          const subText = item.display_name.split(',').slice(1, 3).join(',');
+
+          const row = document.createElement('div');
+          row.className = 'sa-list-item p-2 cursor-pointer flex items-center justify-between gap-2';
+          row.innerHTML = `
+            <div class="min-w-0">
+              <div class="text-xs sm:text-sm font-bold text-white truncate">${escapeHtml(shortTitle)}</div>
+              <div class="text-[11px] text-gray-400 truncate font-sans">${escapeHtml(subText)}</div>
+            </div>
+            <div class="flex gap-1 shrink-0">
+              <button class="btn-go text-[10px] px-2 py-1 rounded bg-[#b43232] hover:bg-red-600 text-white font-bold uppercase">Route</button>
+              <button class="btn-spawn text-[10px] px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[#90b4d8] font-bold uppercase">Spawn</button>
+            </div>
+          `;
+
+          row.querySelector('.btn-go').onclick = (ev) => {
+            ev.stopPropagation();
+            playSound('select');
+            resultsBox.classList.add('hidden');
+            setDestination(lat, lng, shortTitle);
+            map.flyTo([lat, lng], 14);
+          };
+
+          row.querySelector('.btn-spawn').onclick = (ev) => {
+            ev.stopPropagation();
+            playSound('select');
+            resultsBox.classList.add('hidden');
+            setPlayerPosition(lat, lng, shortTitle, true);
+            if (state.targetPos) calculateBestRoute();
+          };
+
+          row.onclick = () => {
+            playSound('select');
+            resultsBox.classList.add('hidden');
+            setDestination(lat, lng, shortTitle);
+            map.flyTo([lat, lng], 14);
+          };
+
+          resultsBox.appendChild(row);
+        });
+      } catch (err) {
+        resultsBox.innerHTML = `<div class="p-2.5 text-xs text-red-400">Radar connection error. Check internet access.</div>`;
+      }
+    }
+
+    /* ==========================================================================
+       6. PLAYER POSITION, WAYPOINTS & TURN-BY-TURN ROUTING (OSRM API)
+       ========================================================================== */
+    function setPlayerPosition(lat, lng, label, flyTo = true) {
+      state.playerPos = { lat, lng, label };
+      playerMarker.setLatLng([lat, lng]);
+      document.getElementById('origin-label').textContent = label;
+      if (flyTo) map.flyTo([lat, lng], Math.max(map.getZoom(), 14));
+      updateZoneHUDFromCoords(lat, lng);
+    }
+
+    function setOriginToPlayer() {
+      playSound('blip');
+      centerOnPlayer();
+      if (state.targetPos) calculateBestRoute();
+    }
+
+    function centerOnPlayer() {
+      map.flyTo([state.playerPos.lat, state.playerPos.lng], 15);
+    }
+
+    function locatePlayerGPS() {
+      playSound('blip');
+      if (!navigator.geolocation) {
+        showToast('GPS UNAVAILABLE', 'Browser geolocation is not supported on this device.', 'red');
+        return;
+      }
+      showToast('SCANNING SATELLITES...', 'Acquiring real-world GPS coordinates for CJ...', 'blue');
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude, longitude, heading } = pos.coords;
+          if (typeof heading === 'number' && !isNaN(heading)) {
+            state.playerHeading = heading;
+            playerMarker.setIcon(createPlayerIcon(heading));
+          }
+          const place = await reverseGeocode(latitude, longitude);
+          setPlayerPosition(latitude, longitude, `${place} (Live GPS)`, true);
+          playSound('select');
+          showToast('CJ GPS SYNCED', `Spawned at ${place}`, 'green');
+          if (state.targetPos) calculateBestRoute();
+        },
+        () => {
+          playSound('back');
+          showToast('GPS SIGNAL BLOCKED', 'Permission denied. Drag the white player arrow manually!', 'red');
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+
+    function setDestination(lat, lng, label) {
+      stopDriveSimulation();
+      state.targetPos = { lat, lng, label };
+      state.waypointsSet += 1;
+      persistData();
+
+      document.getElementById('dest-label').textContent = label;
+      document.getElementById('bm-name-input').value = label.split(',')[0];
+
+      if (targetMarker) {
+        targetMarker.setLatLng([lat, lng]);
+      } else {
+        targetMarker = L.marker([lat, lng], {
+          icon: createTargetIcon(),
+          zIndexOffset: 950
+        }).addTo(map);
+      }
+
+      // Popup with quick actions
+      targetMarker.bindPopup(`
+        <div class="space-y-1.5 min-w-[180px]">
+          <div class="text-xs uppercase text-[#e6d27a] font-bold">Red Target Waypoint</div>
+          <div class="text-sm text-white font-semibold leading-snug">${escapeHtml(label)}</div>
+          <div class="text-[11px] text-gray-400 font-mono">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+          <div class="flex gap-1.5 pt-1">
+            <button onclick="quickSaveTarget('${escapeHtml(label).replace(/'/g, "\\'")}')" class="px-2 py-1 bg-[#549844] text-white text-[11px] rounded uppercase font-bold">Save Blip</button>
+            <button onclick="clearRoute()" class="px-2 py-1 bg-red-800 text-white text-[11px] rounded uppercase font-bold">Remove</button>
+          </div>
+        </div>
+      `).openPopup();
+
+      calculateBestRoute();
+    }
+
+    function quickSaveTarget(name) {
+      document.getElementById('bm-name-input').value = name;
+      switchTab('bookmarks');
+      saveCurrentBookmark();
+    }
+
+    function setTravelMode(mode) {
+      playSound('blip');
+      state.travelMode = mode;
+
+      document.querySelectorAll('.mode-btn').forEach((btn) => {
+        btn.classList.remove('border-[#90b4d8]', 'bg-[#90b4d8]/25', 'text-white');
+        btn.classList.add('border-gray-700', 'bg-black/60', 'text-gray-400');
+      });
+
+      const activeBtn = document.getElementById(`mode-${mode}`);
+      activeBtn.classList.remove('border-gray-700', 'bg-black/60', 'text-gray-400');
+      activeBtn.classList.add('border-[#90b4d8]', 'bg-[#90b4d8]/25', 'text-white');
+
+      const labels = {
+        driving: 'INFERNUS (CAR)',
+        cycling: 'BMX (BICYCLE)',
+        walking: 'CJ SPRINT (ON FOOT)'
+      };
+      document.getElementById('hud-vehicle-label').textContent = labels[mode];
+
+      if (state.targetPos) {
+        calculateBestRoute();
+      }
+    }
+
+    async function calculateBestRoute() {
+      if (!state.targetPos) return;
+
+      const profileMap = {
+        driving: 'driving',
+        cycling: 'bike',
+        walking: 'foot'
+      };
+      const profile = profileMap[state.travelMode] || 'driving';
+      const { lat: lat1, lng: lng1 } = state.playerPos;
+      const { lat: lat2, lng: lng2 } = state.targetPos;
+
+      const summaryBox = document.getElementById('route-summary-box');
+      summaryBox.classList.remove('hidden');
+      document.getElementById('route-stats-main').textContent = 'Calculating Best GPS Route...';
+
+      try {
+        const url = `https://router.project-osrm.org/route/v1/${profile}/${lng1},${lat1};${lng2},${lat2}?overview=full&geometries=geojson&steps=true&alternatives=true`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
+          throw new Error('No route found');
+        }
+
+        state.routes = data.routes;
+        state.selectedRouteIndex = 0;
+        renderRouteOnMap();
+      } catch (err) {
+        // Fallback straight-line radar vector if OSRM cannot connect across oceans
+        const distMeters = map.distance([lat1, lng1], [lat2, lng2]);
+        state.routes = [{
+          distance: distMeters,
+          duration: distMeters / 12,
+          geometry: {
+            type: 'LineString',
+            coordinates: [[lng1, lat1], [lng2, lat2]]
+          },
+          legs: [{
+            steps: [{
+              maneuver: { type: 'depart', modifier: 'straight' },
+              name: 'Direct Aerial / Radar Vector',
+              distance: distMeters
+            }]
+          }]
+        }];
+        state.selectedRouteIndex = 0;
+        renderRouteOnMap();
+      }
+    }
+
+    function renderRouteOnMap() {
+      clearRoutePolylines();
+      if (!state.routes.length) return;
+
+      // Render alternative routes first (muted), then active route on top in iconic GTA SA yellow/cream
+      state.routes.forEach((route, idx) => {
+        if (idx === state.selectedRouteIndex) return;
+        const latlngs = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+        const altLine = L.polyline(latlngs, {
+          color: '#7c8b99',
+          weight: 6,
+          opacity: 0.65,
+          dashArray: '8, 8'
+        }).addTo(map);
+        altLine.on('click', () => selectRouteAlternative(idx));
+        routeLayers.push(altLine);
+      });
+
+      const activeRoute = state.routes[state.selectedRouteIndex];
+      const activeCoords = activeRoute.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+
+      // Outer thick black casing (GTA SA signature style)
+      const blackCasing = L.polyline(activeCoords, {
+        color: '#000000',
+        weight: 11,
+        opacity: 0.95,
+        lineJoin: 'round',
+        lineCap: 'round'
+      }).addTo(map);
+
+      // Inner iconic GTA SA radar yellow/cream fill (#e6d27a)
+      const yellowFill = L.polyline(activeCoords, {
+        color: '#e6d27a',
+        weight: 6,
+        opacity: 1,
+        lineJoin: 'round',
+        lineCap: 'round'
+      }).addTo(map);
+
+      routeLayers.push(blackCasing, yellowFill);
+
+      // Fit map bounds comfortably
+      const bounds = L.latLngBounds(activeCoords);
+      map.fitBounds(bounds, { padding: [70, 70] });
+
+      // Update Route UI Stats
+      const distKm = (activeRoute.distance / 1000).toFixed(2);
+      const mins = Math.max(1, Math.round(activeRoute.duration / 60));
+      document.getElementById('route-stats-main').textContent = `${distKm} KM • ${mins} MIN ETA`;
+      updateMoneyDistanceHUD(distKm);
+
+      // Set Wanted Stars based on trip distance for fun GTA flavor
+      const stars = activeRoute.distance > 25000 ? 3 : activeRoute.distance > 8000 ? 2 : 1;
+      setWantedStars(stars);
+
+      // Render Route Alternatives buttons
+      const altBar = document.getElementById('route-alternatives-bar');
+      altBar.innerHTML = '';
+      state.routes.forEach((r, idx) => {
+        const dKm = (r.distance / 1000).toFixed(1);
+        const m = Math.max(1, Math.round(r.duration / 60));
+        const btn = document.createElement('button');
+        const isSelected = idx === state.selectedRouteIndex;
+        btn.className = `px-2 py-1 rounded text-[11px] font-bold uppercase transition ${
+          isSelected
+            ? 'bg-[#e6d27a] text-black'
+            : 'bg-slate-800 text-gray-300 hover:bg-slate-700'
+        }`;
+        btn.textContent = `${idx === 0 ? '★ Best Route' : `Alt Route ${idx + 1}`} (${dKm}km • ${m}m)`;
+        btn.onclick = () => selectRouteAlternative(idx);
+        altBar.appendChild(btn);
+      });
+
+      // Render Turn-by-Turn Instructions
+      renderTurnByTurnSteps(activeRoute);
+    }
+
+    function selectRouteAlternative(idx) {
+      playSound('blip');
+      stopDriveSimulation();
+      state.selectedRouteIndex = idx;
+      renderRouteOnMap();
+    }
+
+    function renderTurnByTurnSteps(route) {
+      const container = document.getElementById('turn-by-turn-list');
+      container.innerHTML = '';
+
+      const steps = route.legs?.[0]?.steps || [];
+      steps.forEach((step, idx) => {
+        const icon = getManeuverSymbol(step.maneuver?.type, step.maneuver?.modifier);
+        const instruction = formatStepInstruction(step);
+        const distText = step.distance >= 1000
+          ? `${(step.distance / 1000).toFixed(1)} km`
+          : `${Math.round(step.distance)} m`;
+
+        const row = document.createElement('div');
+        row.className = 'bg-black/75 border border-gray-800 rounded px-2.5 py-1.5 flex items-center justify-between gap-2 text-xs';
+        row.innerHTML = `
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-6 h-6 rounded bg-[#90b4d8]/20 border border-[#90b4d8]/40 text-[#e6d27a] flex items-center justify-center font-bold shrink-0">${icon}</span>
+            <span class="text-gray-200 truncate font-sans">${idx + 1}. ${escapeHtml(instruction)}</span>
+          </div>
+          <span class="text-[11px] text-[#90b4d8] font-mono shrink-0">${distText}</span>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function getManeuverSymbol(type, modifier = '') {
+      if (type === 'arrive') return '🏁';
+      if (type === 'roundabout' || type === 'rotary') return '🔄';
+      if (modifier.includes('left')) return '↰';
+      if (modifier.includes('right')) return '↱';
+      if (modifier.includes('uturn')) return '↩';
+      return '↑';
+    }
+
+    function formatStepInstruction(step) {
+      const mType = step.maneuver?.type || 'continue';
+      const mod = step.maneuver?.modifier ? step.maneuver.modifier.replace('-', ' ') : '';
+      const street = step.name ? `onto ${step.name}` : '';
+      if (mType === 'depart') return `Head ${mod || 'out'} ${street}`.trim();
+      if (mType === 'arrive') return `Arrive at Red Target Waypoint`;
+      if (mType === 'roundabout') return `Enter roundabout and exit ${street}`.trim();
+      return `Turn ${mod || 'ahead'} ${street}`.trim();
+    }
+
+    function clearRoutePolylines() {
+      routeLayers.forEach((l) => map.removeLayer(l));
+      routeLayers = [];
+    }
+
+    function clearRoute() {
+      playSound('back');
+      stopDriveSimulation();
+      clearRoutePolylines();
+      if (targetMarker) {
+        map.removeLayer(targetMarker);
+        targetMarker = null;
+      }
+      state.targetPos = null;
+      state.routes = [];
+      document.getElementById('dest-label').textContent = 'Click map or pick a destination';
+      document.getElementById('route-summary-box').classList.add('hidden');
+      updateMoneyDistanceHUD('0.0');
+      setWantedStars(0);
+    }
+
+    /* ==========================================================================
+       7. LIVE "DRIVE SIM" — ANIMATED CJ NAVIGATION ALONG ROUTE
+       ========================================================================== */
+    function toggleDriveSimulation() {
+      if (state.simRunning) {
+        stopDriveSimulation();
+      } else {
+        startDriveSimulation();
+      }
+    }
+
+    function startDriveSimulation() {
+      const activeRoute = state.routes[state.selectedRouteIndex];
+      if (!activeRoute) return;
+
+      playSound('select');
+      state.simRunning = true;
+      state.simProgress = 0;
+
+      const btn = document.getElementById('btn-drive-sim');
+      btn.textContent = '⏹ STOP SIM';
+      btn.classList.replace('bg-[#549844]', 'bg-red-700');
+
+      const simWrap = document.getElementById('sim-progress-wrapper');
+      simWrap.classList.remove('hidden');
+
+      const coords = activeRoute.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+      if (coords.length < 2) return;
+
+      let idx = 0;
+      const stepIncrement = Math.max(1, Math.floor(coords.length / 140));
+
+      state.simTimer = setInterval(() => {
+        if (idx >= coords.length - 1) {
+          // Arrived at destination!
+          const finalPt = coords[coords.length - 1];
+          setPlayerPosition(finalPt[0], finalPt[1], state.targetPos?.label || 'Destination Reached', false);
+          stopDriveSimulation();
+          playSound('cheat');
+          const reward = Math.max(150, Math.round(activeRoute.distance / 10));
+          state.cash += reward;
+          state.totalDistKm += activeRoute.distance / 1000;
+          persistData();
+          updateMoneyDistanceHUD('0.0');
+          showToast('MISSION PASSED! +RESPECT', `Destination reached! Reward: +$${reward}`, 'green');
+          return;
+        }
+
+        const curr = coords[idx];
+        const next = coords[Math.min(coords.length - 1, idx + stepIncrement)];
+        const bearing = computeBearing(curr[0], curr[1], next[0], next[1]);
+
+        state.playerHeading = bearing;
+        playerMarker.setIcon(createPlayerIcon(bearing));
+        playerMarker.setLatLng(curr);
+        map.panTo(curr, { animate: true, duration: 0.25 });
+
+        const pct = Math.min(100, Math.round((idx / (coords.length - 1)) * 100));
+        document.getElementById('sim-progress-bar').style.width = `${pct}%`;
+        document.getElementById('sim-percent').textContent = `${pct}%`;
+
+        // Update live step prompt
+        const steps = activeRoute.legs?.[0]?.steps || [];
+        if (steps.length > 0) {
+          const stepIdx = Math.min(steps.length - 1, Math.floor((pct / 100) * steps.length));
+          document.getElementById('sim-current-instruction').textContent = formatStepInstruction(steps[stepIdx]);
+        }
+
+        idx += stepIncrement;
+      }, 140);
+    }
+
+    function stopDriveSimulation() {
+      if (state.simTimer) {
+        clearInterval(state.simTimer);
+        state.simTimer = null;
+      }
+      state.simRunning = false;
+      const btn = document.getElementById('btn-drive-sim');
+      if (btn) {
+        btn.textContent = '▶ DRIVE SIM';
+        btn.classList.replace('bg-red-700', 'bg-[#549844]');
+      }
+      const simWrap = document.getElementById('sim-progress-wrapper');
+      if (simWrap) simWrap.classList.add('hidden');
+    }
+
+    function computeBearing(lat1, lon1, lat2, lon2) {
+      const toRad = (d) => (d * Math.PI) / 180;
+      const toDeg = (r) => (r * 180) / Math.PI;
+      const dLon = toRad(lon2 - lon1);
+      const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+      const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+                Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    /* ==========================================================================
+       8. BOOKMARKS / SAFEHOUSES & RADAR LEGEND MANAGEMENT
+       ========================================================================== */
+    function renderBookmarkMarkers() {
+      bookmarkMarkersLayer.clearLayers();
+      state.bookmarks.forEach((bm) => {
+        if (!state.visibleCategories[bm.type]) return;
+        const marker = L.marker([bm.lat, bm.lng], {
+          icon: createBlipDivIcon(bm.type)
+        });
+
+        marker.bindPopup(`
+          <div class="space-y-1.5 min-w-[170px]">
+            <div class="text-[11px] uppercase text-[#90b4d8] font-bold">${escapeHtml(BLIP_TYPES[bm.type]?.label || 'Radar Blip')}</div>
+            <div class="text-sm font-bold text-white">${escapeHtml(bm.name)}</div>
+            <div class="flex gap-1.5 pt-1">
+              <button onclick="routeToBookmark('${bm.id}')" class="px-2 py-1 bg-[#b43232] text-white text-[11px] rounded uppercase font-bold">Set Waypoint</button>
+              <button onclick="teleportToBookmark('${bm.id}')" class="px-2 py-1 bg-slate-700 text-white text-[11px] rounded uppercase font-bold">Spawn CJ</button>
+            </div>
+          </div>
+        `);
+        bookmarkMarkersLayer.addLayer(marker);
+      });
+    }
+
+    function renderBookmarksList() {
+      const list = document.getElementById('bookmarks-list');
+      list.innerHTML = '';
+
+      if (state.bookmarks.length === 0) {
+        list.innerHTML = `<div class="text-xs text-gray-400 text-center py-4">No safehouses or blips saved yet.</div>`;
+        return;
+      }
+
+      state.bookmarks.forEach((bm) => {
+        const blipDef = BLIP_TYPES[bm.type] || BLIP_TYPES.star;
+        const card = document.createElement('div');
+        card.className = 'sa-list-item bg-black/70 border border-gray-800 rounded p-2 flex items-center justify-between gap-2';
+        card.innerHTML = `
+          <div class="flex items-center gap-2.5 min-w-0 cursor-pointer" onclick="routeToBookmark('${bm.id}')">
+            <div class="shrink-0">${blipDef.svg}</div>
+            <div class="min-w-0">
+              <div class="text-xs sm:text-sm font-bold text-white truncate">${escapeHtml(bm.name)}</div>
+              <div class="text-[10px] text-gray-400 uppercase">${escapeHtml(blipDef.label)}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <button onclick="routeToBookmark('${bm.id}')" title="Route Here" class="px-2 py-1 rounded bg-[#b43232] hover:bg-red-600 text-white text-[10px] font-bold uppercase">GO</button>
+            <button onclick="deleteBookmark('${bm.id}')" title="Delete Blip" class="px-1.5 py-1 rounded bg-slate-800 hover:bg-red-950 text-gray-400 hover:text-red-300 text-[10px]">✕</button>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    function saveCurrentBookmark() {
+      const nameInput = document.getElementById('bm-name-input');
+      const iconSelect = document.getElementById('bm-icon-select');
+      const name = nameInput.value.trim();
+
+      if (!name) {
+        playSound('back');
+        showToast('NAME REQUIRED', 'Enter a name for your Safehouse or Radar Blip.', 'red');
+        return;
+      }
+
+      const coords = state.targetPos || map.getCenter();
+      const newBm = {
+        id: 'bm-' + Date.now(),
+        name,
+        type: iconSelect.value,
+        lat: coords.lat,
+        lng: coords.lng
+      };
+
+      state.bookmarks.unshift(newBm);
+      persistData();
+      renderBookmarkMarkers();
+      renderBookmarksList();
+      nameInput.value = '';
+      playSound('select');
+      showToast('SAFEHOUSE SAVED', `"${name}" added to San Andreas Radar.`, 'green');
+    }
+
+    function routeToBookmark(id) {
+      const bm = state.bookmarks.find((b) => b.id === id);
+      if (!bm) return;
+      playSound('select');
+      switchTab('nav');
+      setDestination(bm.lat, bm.lng, bm.name);
+    }
+
+    function teleportToBookmark(id) {
+      const bm = state.bookmarks.find((b) => b.id === id);
+      if (!bm) return;
+      playSound('select');
+      setPlayerPosition(bm.lat, bm.lng, bm.name, true);
+      if (state.targetPos) calculateBestRoute();
+    }
+
+    function deleteBookmark(id) {
+      playSound('back');
+      state.bookmarks = state.bookmarks.filter((b) => b.id !== id);
+      persistData();
+      renderBookmarkMarkers();
+      renderBookmarksList();
+    }
+
+    function resetDefaultBookmarks() {
+      playSound('select');
+      state.bookmarks = [...DEFAULT_BOOKMARKS];
+      persistData();
+      renderBookmarkMarkers();
+      renderBookmarksList();
+      showToast('RADAR RESET', 'Restored default San Andreas landmarks.', 'blue');
+    }
+
+    function exportBookmarksJSON() {
+      playSound('select');
+      const jsonStr = JSON.stringify(state.bookmarks, null, 2);
+      const textarea = document.createElement('textarea');
+      textarea.value = jsonStr;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      showToast('EXPORTED TO CLIPBOARD', 'Bookmarks JSON copied to your clipboard.', 'green');
+    }
+
+    function renderLegend() {
+      const container = document.getElementById('legend-items-container');
+      container.innerHTML = '';
+
+      Object.entries(BLIP_TYPES).forEach(([key, def]) => {
+        const active = state.visibleCategories[key];
+        const row = document.createElement('div');
+        row.className = 'sa-list-item bg-black/65 border border-gray-800 rounded px-2.5 py-1.5 flex items-center justify-between cursor-pointer';
+        row.innerHTML = `
+          <div class="flex items-center gap-2.5">
+            <div>${def.svg}</div>
+            <span class="text-xs sm:text-sm ${active ? 'text-white' : 'text-gray-500 line-through'}">${escapeHtml(def.label)}</span>
+          </div>
+          <span class="text-[10px] px-2 py-0.5 rounded font-bold uppercase ${active ? 'bg-[#549844] text-white' : 'bg-gray-800 text-gray-400'}">
+            ${active ? 'VISIBLE' : 'HIDDEN'}
+          </span>
+        `;
+        row.onclick = () => {
+          playSound('blip');
+          state.visibleCategories[key] = !state.visibleCategories[key];
+          renderLegend();
+          renderBookmarkMarkers();
+        };
+        container.appendChild(row);
+      });
+    }
+
+    function toggleAllLegend(visible) {
+      playSound('blip');
+      Object.keys(BLIP_TYPES).forEach((k) => (state.visibleCategories[k] = visible));
+      renderLegend();
+      renderBookmarkMarkers();
+    }
+
+    /* ==========================================================================
+       9. CLASSIC GTA SAN ANDREAS CHEAT CODES & UI HELPERS
+       ========================================================================== */
+    const cheatInput = document.getElementById('cheat-input');
+    cheatInput.addEventListener('input', () => {
+      const code = cheatInput.value.trim().toUpperCase();
+      if (['ROCKETMAN', 'HESOYAM', 'AEZAKMI', 'YECGAA'].includes(code)) {
+        triggerCheat(code);
+        cheatInput.value = '';
+      }
+    });
+
+    function triggerCheat(code) {
+      playSound('cheat');
+      if (code === 'ROCKETMAN') {
+        state.satelliteMode = !state.satelliteMode;
+        if (state.satelliteMode) {
+          map.removeLayer(radarTileLayer);
+          satelliteTileLayer.addTo(map);
+          showToast('CHEAT ACTIVATED', 'ROCKETMAN: Aerial Satellite Radar Enabled!', 'gold');
+        } else {
+          map.removeLayer(satelliteTileLayer);
+          radarTileLayer.addTo(map);
+          showToast('CHEAT ACTIVATED', 'Classic 2004 San Andreas Radar Restored!', 'gold');
+        }
+      } else if (code === 'HESOYAM') {
+        state.cash += 250000;
+        persistData();
+        updateMoneyDistanceHUD('0.0');
+        centerOnPlayer();
+        showToast('CHEAT ACTIVATED', 'HESOYAM: Health, Armor & +$250,000!', 'gold');
+      } else if (code === 'AEZAKMI') {
+        setWantedStars(0);
+        state.cleanHudMode = !state.cleanHudMode;
+        document.getElementById('gta-hud').style.opacity = state.cleanHudMode ? '0.18' : '1';
+        showToast('CHEAT ACTIVATED', 'AEZAKMI: Wanted Level Cleared & Clean HUD Toggled!', 'gold');
+      } else if (code === 'YECGAA') {
+        if (state.targetPos) {
+          setPlayerPosition(state.targetPos.lat, state.targetPos.lng, state.targetPos.label, true);
+          showToast('CHEAT ACTIVATED', 'YECGAA: Jetpack Teleported CJ to Waypoint!', 'gold');
+        } else {
+          showToast('NO TARGET SET', 'Place a Red Target Waypoint on the map first!', 'red');
+        }
+      }
+    }
+
+    function switchTab(tabKey) {
+      playSound('blip');
+      ['nav', 'bookmarks', 'legend', 'stats'].forEach((k) => {
+        document.getElementById(`panel-${k}`).classList.add('hidden');
+        document.getElementById(`tab-${k}`).classList.remove('active');
+      });
+      document.getElementById(`panel-${tabKey}`).classList.remove('hidden');
+      document.getElementById(`tab-${tabKey}`).classList.add('active');
+    }
+
+    function toggleDrawer() {
+      playSound('blip');
+      state.drawerOpen = !state.drawerOpen;
+      const body = document.getElementById('drawer-body');
+      const btn = document.getElementById('btn-toggle-drawer');
+      if (state.drawerOpen) {
+        body.classList.remove('hidden');
+        btn.textContent = '☰ MENU';
+      } else {
+        body.classList.add('hidden');
+        btn.textContent = '☰ OPEN GPS';
+      }
+    }
+
+    function updateMoneyDistanceHUD(activeRouteKm = '0.0') {
+      const cashFormatted = '$' + String(Math.floor(state.cash)).padStart(8, '0');
+      document.getElementById('hud-money-distance').textContent = `${cashFormatted} • ${activeRouteKm} KM`;
+    }
+
+    function setWantedStars(count) {
+      state.wantedStars = count;
+      const container = document.getElementById('hud-stars');
+      let html = '';
+      for (let i = 1; i <= 6; i++) {
+        html += i <= count
+          ? `<span class="text-[#e6d27a]">★</span>`
+          : `<span class="text-gray-700">★</span>`;
+      }
+      container.innerHTML = html;
+    }
+
+    function updateStatsUI() {
+      document.getElementById('stat-total-dist').textContent = `${state.totalDistKm.toFixed(2)} KM`;
+      document.getElementById('stat-waypoints').textContent = state.waypointsSet;
+      document.getElementById('stat-bookmarks').textContent = state.bookmarks.length;
+    }
+
+    function showToast(title, message, tone = 'blue') {
+      const container = document.getElementById('toast-container');
+      const borderColors = {
+        blue: 'border-[#90b4d8]',
+        green: 'border-[#549844]',
+        red: 'border-[#b43232]',
+        gold: 'border-[#e6d27a]'
+      };
+      const el = document.createElement('div');
+      el.className = `cheat-banner-anim bg-black/92 border-l-4 ${borderColors[tone] || borderColors.blue} border border-gray-800 px-3 py-2 rounded shadow-2xl`;
+      el.innerHTML = `
+        <div class="gta-hud-text text-sm text-[#e6d27a] uppercase tracking-wider">${escapeHtml(title)}</div>
+        <div class="text-xs text-gray-200 font-sans">${escapeHtml(message)}</div>
+      `;
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 3500);
+    }
+
+    function startLiveClock() {
+      const updateClock = () => {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        document.getElementById('hud-clock').textContent = `${hh}:${mm}`;
+      };
+      updateClock();
+      setInterval(updateClock, 10000);
+    }
+
+    function debounce(fn, delay) {
+      let timer = null;
+      return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), delay);
+      };
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Boot Application
+    window.addEventListener('DOMContentLoaded', () => {
+      loadPersistedData();
+      initMap();
+      startLiveClock();
+      updateMoneyDistanceHUD('0.0');
+    });
+  </script>
+</body>
+</html>
