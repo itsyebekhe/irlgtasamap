@@ -14,7 +14,7 @@
 
   <style>
     :root {
-      --sa-bg: rgba(12, 14, 12, 0.90);
+      --sa-bg: rgba(12, 14, 12, 0.92);
       --sa-border: #3a443a;
       --sa-green: #539e46;
       --sa-green-bright: #74d662;
@@ -41,21 +41,21 @@
       color: var(--sa-text);
     }
 
-    /* Map Container & GTA SA Tile Color Grading */
     #map {
       width: 100%;
       height: 100%;
       z-index: 1;
-      background: #2b3e50;
+      background: #23313f;
     }
 
-    /* Tuned CSS Filter to transform OpenStreetMap into 2004 GTA San Andreas Radar colors */
-    .leaflet-tile-pane {
+    /* FIX FOR ROUTE DRIFT & SHAKING:
+       Filter individual tiles instead of .leaflet-tile-pane so SVG route vectors stay 100% locked to roads */
+    .leaflet-tile {
       filter: sepia(45%) hue-rotate(48deg) saturate(135%) brightness(78%) contrast(122%);
     }
 
     .leaflet-control-attribution {
-      background: rgba(0, 0, 0, 0.7) !important;
+      background: rgba(0, 0, 0, 0.75) !important;
       color: #888 !important;
       font-size: 10px !important;
       font-family: sans-serif;
@@ -148,7 +148,7 @@
       cursor: pointer;
       font-size: 13px;
       letter-spacing: 0.8px;
-      transition: all 0.12s ease;
+      transition: background 0.12s ease;
     }
 
     .sa-btn:hover {
@@ -196,7 +196,7 @@
       text-overflow: ellipsis;
     }
 
-    /* Top Right Status HUD (Cash, Clock, Wanted Stars) */
+    /* Top Right Status HUD */
     #status-hud {
       padding: 8px 14px;
       text-align: right;
@@ -228,7 +228,7 @@
       text-shadow: 0 0 6px rgba(229, 184, 75, 0.8);
     }
 
-    /* Left/Bottom Navigation & Bookmarks Drawer */
+    /* Left Drawer Panel */
     #side-panel {
       position: fixed;
       top: 72px;
@@ -275,7 +275,6 @@
       display: block;
     }
 
-    /* Route Controls */
     .route-modes {
       display: flex;
       gap: 6px;
@@ -330,7 +329,6 @@
       font-weight: 600;
     }
 
-    /* Bookmarks & Legend Lists */
     .list-item {
       display: flex;
       align-items: center;
@@ -389,7 +387,6 @@
       letter-spacing: 1px;
     }
 
-    /* Cheat Banner */
     #cheat-banner {
       position: fixed;
       top: 85px;
@@ -407,19 +404,14 @@
       text-transform: uppercase;
     }
 
-    /* Custom GTA SA Map Blips */
+    /* Custom GTA SA Map Blips (No hover transform so Leaflet positioning never drifts) */
     .sa-blip {
       display: flex;
       align-items: center;
       justify-content: center;
       filter: drop-shadow(0 2px 3px rgba(0,0,0,0.9));
-      transition: transform 0.15s ease;
-    }
-    .sa-blip:hover {
-      transform: scale(1.22);
     }
 
-    /* Player Arrow Blip */
     .cj-arrow {
       width: 28px;
       height: 28px;
@@ -490,8 +482,8 @@
   <div id="side-panel" class="hud-panel">
     <div class="tabs">
       <button class="tab-btn active" data-tab="nav-tab">GPS ROUTE</button>
-      <button class="tab-btn" data-tab="bookmarks-tab">BLIPS</button>
-      <button class="tab-btn" data-tab="legend-tab">LEGEND</button>
+      <button class="tab-btn" data-tab="bookmarks-tab">SAVED</button>
+      <button class="tab-btn" data-tab="legend-tab">IRL BLIPS</button>
     </div>
 
     <!-- TAB 1: NAVIGATION -->
@@ -538,10 +530,13 @@
       <div id="bookmarks-list"></div>
     </div>
 
-    <!-- TAB 3: LEGEND & CHEATS -->
+    <!-- TAB 3: IRL BLIPS & LEGEND -->
     <div id="legend-tab" class="tab-content">
+      <button class="sa-btn" id="scan-poi-btn" style="width: 100%; margin-bottom: 10px; background: var(--sa-green); color: #fff;">
+        SCAN IRL PLACES IN VIEW
+      </button>
       <div style="font-size: 12px; color: var(--sa-muted); margin-bottom: 8px;">
-        TOGGLE MAP ICONS OR TYPE CHEATS ON KEYBOARD: <strong>HESOYAM</strong>, <strong>AEZAKMI</strong>, <strong>ROCKETMAN</strong>
+        REAL-WORLD SHOPS & PLACES AUTO-MAPPED TO GTA SA ICONS:
       </div>
       <div id="legend-list"></div>
     </div>
@@ -551,8 +546,9 @@
   <div id="bottom-hud">
     <div class="bottom-controls">
       <button class="sa-btn" id="toggle-panel-btn">MENU</button>
-      <button class="sa-btn" id="locate-me-btn" style="border-color: var(--sa-green-bright); color: var(--sa-green-bright);">◎ LOCATE ME (GPS)</button>
+      <button class="sa-btn" id="locate-me-btn" style="border-color: var(--sa-green-bright); color: var(--sa-green-bright);">◎ LOCATE ME</button>
       <button class="sa-btn" id="follow-me-btn">AUTO-FOLLOW: OFF</button>
+      <button class="sa-btn" id="auto-scan-btn" style="border-color: var(--sa-gold); color: var(--sa-gold);">IRL ICONS: ON</button>
     </div>
 
     <div id="zone-banner" class="sa-title">
@@ -618,28 +614,40 @@
     // ==========================================
     const BLIP_TYPES = {
       cj: {
-        label: 'Safehouse (CJ)',
-        svg: `<svg width="26" height="26" viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" fill="#000"/><rect x="5" y="5" width="22" height="22" fill="#539e46"/><text x="16" y="22" font-family="Anton, sans-serif" font-size="16" fill="#fff" text-anchor="middle">CJ</text></svg>`
-      },
-      mission: {
-        label: 'Mission Marker',
-        svg: `<svg width="26" height="26" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#000"/><circle cx="16" cy="16" r="10" fill="#e5b84b"/><text x="16" y="21" font-family="Anton, sans-serif" font-size="15" fill="#000" text-anchor="middle">S</text></svg>`
-      },
-      ammunation: {
-        label: 'Ammu-Nation',
-        svg: `<svg width="26" height="26" viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" fill="#000"/><rect x="5" y="5" width="22" height="22" fill="#d94343"/><path d="M9 19h14v-3h-4l-2-3h-4v3H9z" fill="#fff"/></svg>`
+        label: 'Safehouse / Start (CJ)',
+        svg: `<svg width="24" height="24" viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" fill="#000"/><rect x="5" y="5" width="22" height="22" fill="#539e46"/><text x="16" y="22" font-family="Anton, sans-serif" font-size="16" fill="#fff" text-anchor="middle">CJ</text></svg>`
       },
       burger: {
-        label: 'Burger Shot',
-        svg: `<svg width="26" height="26" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#000"/><circle cx="16" cy="16" r="10" fill="#e67e22"/><rect x="9" y="14" width="14" height="4" rx="2" fill="#fff"/></svg>`
+        label: 'Burger Shot (Food & Cafe)',
+        svg: `<svg width="24" height="24" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#000"/><circle cx="16" cy="16" r="10" fill="#e67e22"/><rect x="9" y="12" width="14" height="3" rx="1.5" fill="#fff"/><rect x="8" y="16" width="16" height="2" fill="#539e46"/><rect x="9" y="19" width="14" height="3" rx="1.5" fill="#fff"/></svg>`
       },
       paynspray: {
-        label: "Pay 'n' Spray",
-        svg: `<svg width="26" height="26" viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" fill="#000"/><rect x="5" y="5" width="22" height="22" fill="#4a90e2"/><circle cx="16" cy="16" r="6" fill="#fff"/></svg>`
+        label: "Pay 'n' Spray (Fuel & Auto)",
+        svg: `<svg width="24" height="24" viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" fill="#000"/><rect x="5" y="5" width="22" height="22" fill="#4a90e2"/><path d="M11 22V10h7l3 3v9h-2v-7h-2v7h-6z" fill="#fff"/></svg>`
+      },
+      gym: {
+        label: 'Ganton Gym (Fitness & Park)',
+        svg: `<svg width="24" height="24" viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" fill="#000"/><rect x="5" y="5" width="22" height="22" fill="#8e44ad"/><rect x="8" y="12" width="3" height="8" fill="#fff"/><rect x="21" y="12" width="3" height="8" fill="#fff"/><rect x="11" y="15" width="10" height="2" fill="#fff"/></svg>`
+      },
+      hospital: {
+        label: 'County General (Hospital / Pharmacy)',
+        svg: `<svg width="24" height="24" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#000"/><circle cx="16" cy="16" r="10" fill="#fff"/><path d="M14 9h4v5h5v4h-5v5h-4v-5H9v-4h5z" fill="#d94343"/></svg>`
+      },
+      police: {
+        label: 'LSPD Precinct (Police & Civic)',
+        svg: `<svg width="24" height="24" viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" fill="#000"/><rect x="5" y="5" width="22" height="22" fill="#2c3e50"/><polygon points="16,8 18,14 24,14 19,17 21,23 16,19 11,23 13,17 8,14 14,14" fill="#e5b84b"/></svg>`
+      },
+      shop: {
+        label: 'Binco / Sub Urban (Stores)',
+        svg: `<svg width="24" height="24" viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" fill="#000"/><rect x="5" y="5" width="22" height="22" fill="#27ae60"/><text x="16" y="22" font-family="Anton, sans-serif" font-size="16" fill="#fff" text-anchor="middle">$</text></svg>`
+      },
+      mission: {
+        label: 'Custom Saved Blip',
+        svg: `<svg width="24" height="24" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#000"/><circle cx="16" cy="16" r="10" fill="#e5b84b"/><text x="16" y="21" font-family="Anton, sans-serif" font-size="15" fill="#000" text-anchor="middle">S</text></svg>`
       },
       waypoint: {
         label: 'Target Waypoint',
-        svg: `<svg width="28" height="28" viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" fill="#000"/><rect x="5" y="5" width="22" height="22" fill="#d94343"/><path d="M10 10l12 12M22 10L10 22" stroke="#fff" stroke-width="3.5"/></svg>`
+        svg: `<svg width="26" height="26" viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" fill="#000"/><rect x="5" y="5" width="22" height="22" fill="#d94343"/><path d="M10 10l12 12M22 10L10 22" stroke="#fff" stroke-width="3.5"/></svg>`
       }
     };
 
@@ -648,37 +656,152 @@
       return L.divIcon({
         className: 'sa-blip',
         html: def.svg,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13],
-        popupAnchor: [0, -14]
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -12]
       });
     }
 
     // ==========================================
-    // 3. INITIALIZE LEAFLET MAP (KEYLESS OSM)
+    // 3. INITIALIZE LEAFLET MAP (ANTI-SHAKE CONFIG)
     // ==========================================
     const map = L.map('map', {
-      center: [34.0522, -118.2437], // Default: Los Santos (Los Angeles)
-      zoom: 13,
-      zoomControl: false
+      center: [52.3676, 4.9041], // Default center
+      zoom: 14,
+      zoomControl: false,
+      inertia: false,          // Prevents map sliding/shaking after drag
+      fadeAnimation: false,    // Prevents tile fade flicker
+      zoomAnimation: true
     });
 
-    // Keyless OpenStreetMap Raster Tiles (Works everywhere without API keys)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
+      updateWhenIdle: true,    // Only loads tiles once panning stops (eliminates stutter)
+      keepBuffer: 4,
       attribution: '&copy; OpenStreetMap contributors | GTA SA Radar HUD'
     }).addTo(map);
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     // ==========================================
-    // 4. LIVE USER GPS GEOLOCATION
+    // 4. LIVE REAL-WORLD POI ICONS (OVERPASS API)
+    // ==========================================
+    let irlPoiLayer = L.layerGroup().addTo(map);
+    let autoScanEnabled = true;
+    let scanTimeout = null;
+    let visibleTypes = {
+      cj: true, burger: true, paynspray: true, gym: true,
+      hospital: true, police: true, shop: true, mission: true
+    };
+
+    function classifyOsmTags(tags) {
+      if (!tags) return null;
+      if (tags.amenity === 'fast_food' || tags.amenity === 'restaurant' || tags.amenity === 'cafe' || tags.amenity === 'bar') {
+        return { type: 'burger', gtaTitle: 'BURGER SHOT // FOOD' };
+      }
+      if (tags.amenity === 'fuel' || tags.shop === 'car_repair' || tags.amenity === 'car_wash') {
+        return { type: 'paynspray', gtaTitle: "PAY 'N' SPRAY // AUTO" };
+      }
+      if (tags.leisure === 'fitness_centre' || tags.leisure === 'sports_centre') {
+        return { type: 'gym', gtaTitle: 'GANTON GYM // FITNESS' };
+      }
+      if (tags.amenity === 'hospital' || tags.amenity === 'clinic' || tags.amenity === 'pharmacy') {
+        return { type: 'hospital', gtaTitle: 'COUNTY GENERAL // MEDS' };
+      }
+      if (tags.amenity === 'police') {
+        return { type: 'police', gtaTitle: 'POLICE PRECINCT' };
+      }
+      if (tags.shop === 'supermarket' || tags.shop === 'clothes' || tags.shop === 'convenience') {
+        return { type: 'shop', gtaTitle: 'SUB URBAN // STORE' };
+      }
+      return null;
+    }
+
+    async function scanRealWorldIcons() {
+      if (!autoScanEnabled) return;
+      // Only fetch POIs when zoomed in enough so query stays fast
+      if (map.getZoom() < 14) {
+        irlPoiLayer.clearLayers();
+        return;
+      }
+
+      const b = map.getBounds();
+      const bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
+
+      const query = `
+        [out:json][timeout:10];
+        (
+          node["amenity"~"fast_food|restaurant|cafe|fuel|hospital|pharmacy|police"](${bbox});
+          node["leisure"~"fitness_centre|sports_centre"](${bbox});
+          node["shop"~"supermarket|clothes|car_repair"](${bbox});
+        );
+        out body 65;
+      `;
+
+      try {
+        const res = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: 'data=' + encodeURIComponent(query)
+        });
+        const data = await res.json();
+        irlPoiLayer.clearLayers();
+
+        (data.elements || []).forEach((el) => {
+          const info = classifyOsmTags(el.tags);
+          if (!info || !visibleTypes[info.type]) return;
+
+          const realName = el.tags.name || info.gtaTitle;
+          const marker = L.marker([el.lat, el.lon], {
+            icon: createBlipIcon(info.type)
+          });
+
+          marker.bindPopup(`
+            <div style="min-width: 160px;">
+              <div style="color: var(--sa-gold); font-size: 11px; font-weight: bold;">${info.gtaTitle}</div>
+              <strong style="font-size: 15px;">${realName}</strong>
+              <div class="popup-actions">
+                <button class="sa-btn" onclick="window.setMapEnd(${el.lat}, ${el.lon})">DRIVE HERE</button>
+                <button class="sa-btn" onclick="window.saveNamedBlip(${el.lat}, ${el.lon}, '${realName.replace(/'/g, "\\'")}', '${info.type}')">SAVE</button>
+              </div>
+            </div>
+          `);
+
+          irlPoiLayer.addLayer(marker);
+        });
+      } catch (e) {
+        // Silently ignore Overpass rate limits while panning
+      }
+    }
+
+    // Debounced scan when map stops moving (prevents shaking/lag)
+    map.on('moveend', () => {
+      clearTimeout(scanTimeout);
+      scanTimeout = setTimeout(scanRealWorldIcons, 650);
+    });
+
+    document.getElementById('scan-poi-btn').addEventListener('click', () => {
+      playSound('select');
+      if (map.getZoom() < 14) map.setZoom(15);
+      scanRealWorldIcons();
+    });
+
+    document.getElementById('auto-scan-btn').addEventListener('click', function () {
+      playSound('blip');
+      autoScanEnabled = !autoScanEnabled;
+      this.textContent = `IRL ICONS: ${autoScanEnabled ? 'ON' : 'OFF'}`;
+      if (autoScanEnabled) scanRealWorldIcons();
+      else irlPoiLayer.clearLayers();
+    });
+
+    // ==========================================
+    // 5. STABILIZED USER GPS GEOLOCATION
     // ==========================================
     let userLatLng = null;
     let userMarker = null;
     let accuracyCircle = null;
     let watchId = null;
     let autoFollow = false;
+    let lastPanTime = 0;
 
     const playerIcon = L.divIcon({
       className: 'cj-arrow',
@@ -689,8 +812,15 @@
       iconAnchor: [14, 14]
     });
 
-    function updateUserLocation(lat, lng, accuracy = 25, heading = 0, fly = false) {
-      userLatLng = L.latLng(lat, lng);
+    function updateUserLocation(lat, lng, accuracy = 25, heading = 0, forceCenter = false) {
+      const newPos = L.latLng(lat, lng);
+
+      // Ignore tiny < 3m GPS jitter so marker doesn't vibrate
+      if (userLatLng && userLatLng.distanceTo(newPos) < 3 && !forceCenter) {
+        return;
+      }
+
+      userLatLng = newPos;
 
       if (!userMarker) {
         userMarker = L.marker(userLatLng, { icon: playerIcon, zIndexOffset: 1000 })
@@ -700,7 +830,7 @@
           radius: accuracy,
           color: '#74d662',
           fillColor: '#539e46',
-          fillOpacity: 0.15,
+          fillOpacity: 0.14,
           weight: 1
         }).addTo(map);
       } else {
@@ -713,42 +843,46 @@
         if (svg) svg.style.transform = `rotate(${heading}deg)`;
       }
 
-      // Automatically set as Start Point if none chosen yet
       if (!startPoint) {
         setStartPoint(userLatLng, 'Current GPS Location');
       }
 
-      if (fly || autoFollow) {
-        map.flyTo(userLatLng, Math.max(map.getZoom(), 15), { duration: 1.0 });
+      // Use instant setView / throttled panTo instead of flyTo to prevent map shaking
+      const now = Date.now();
+      if (forceCenter) {
+        map.setView(userLatLng, Math.max(map.getZoom(), 15), { animate: false });
+        lastPanTime = now;
+      } else if (autoFollow && now - lastPanTime > 2500) {
+        map.panTo(userLatLng, { animate: true, duration: 0.4 });
+        lastPanTime = now;
       }
     }
 
-    function locateUser(flyOnLocate = true) {
+    function locateUser(centerNow = true) {
       playSound('select');
       const zoneSub = document.getElementById('zone-sub');
       zoneSub.textContent = 'ACQUIRING GPS SATELLITE...';
 
       if (!navigator.geolocation) {
-        zoneSub.textContent = 'GPS NOT SUPPORTED BY BROWSER';
+        zoneSub.textContent = 'GPS NOT SUPPORTED';
         return;
       }
 
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const { latitude, longitude, accuracy, heading } = pos.coords;
-          updateUserLocation(latitude, longitude, accuracy, heading, flyOnLocate);
+          updateUserLocation(latitude, longitude, accuracy, heading, centerNow);
           setStartPoint(L.latLng(latitude, longitude), 'My GPS Location');
           reverseGeocodeZone(latitude, longitude);
           zoneSub.textContent = `GPS LOCKED (±${Math.round(accuracy)}M)`;
+          scanRealWorldIcons();
         },
-        (err) => {
-          zoneSub.textContent = 'GPS PERMISSION DENIED / UNAVAILABLE';
-          alert('Could not get your location. Make sure Location Services are enabled and allowed for this site (HTTPS required).');
+        () => {
+          zoneSub.textContent = 'GPS BLOCKED OR UNAVAILABLE';
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
       );
 
-      // Continuous live tracking
       if (!watchId) {
         watchId = navigator.geolocation.watchPosition(
           (pos) => {
@@ -756,7 +890,7 @@
             updateUserLocation(latitude, longitude, accuracy, heading, false);
           },
           () => {},
-          { enableHighAccuracy: true }
+          { enableHighAccuracy: true, maximumAge: 3000 }
         );
       }
     }
@@ -772,7 +906,7 @@
     });
 
     // ==========================================
-    // 5. SEARCH & GEOCODING (NOMINATIM)
+    // 6. SEARCH & GEOCODING (NOMINATIM)
     // ==========================================
     const searchInput = document.getElementById('search-input');
     const searchResults = document.getElementById('search-results');
@@ -785,7 +919,6 @@
       searchResults.style.display = 'block';
       searchResults.innerHTML = `<div class="search-item">Scanning satellite database...</div>`;
 
-      // Bias search near current map center
       const b = map.getBounds();
       const viewbox = `${b.getWest()},${b.getNorth()},${b.getEast()},${b.getSouth()}`;
 
@@ -815,7 +948,7 @@
           div.addEventListener('click', () => {
             playSound('select');
             const ll = L.latLng(lat, lon);
-            map.flyTo(ll, 15);
+            map.setView(ll, 15, { animate: false });
             setEndPoint(ll, shortName);
             calculateRoute();
             searchResults.style.display = 'none';
@@ -847,13 +980,14 @@
     }
 
     // ==========================================
-    // 6. OSRM ROUTING & TURN-BY-TURN GPS
+    // 7. HIGH-ACCURACY OSRM ROUTING
     // ==========================================
     let startPoint = null;
     let endPoint = null;
     let startMarker = null;
     let endMarker = null;
     let routeLine = null;
+    let routeOutline = null;
     let routeCoords = [];
     let currentMode = 'driving';
     let simInterval = null;
@@ -872,7 +1006,6 @@
       endMarker = L.marker(latlng, { icon: createBlipIcon('waypoint') }).addTo(map);
     }
 
-    // Mode buttons
     document.querySelectorAll('.route-modes .sa-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         playSound('blip');
@@ -885,12 +1018,13 @@
 
     async function calculateRoute() {
       if (!startPoint || !endPoint) {
-        alert('Set both a Start Point (use Locate Me or click map) and a Destination first.');
+        alert('Set both a Start Point and a Destination first.');
         return;
       }
       playSound('select');
 
       const profile = currentMode === 'cycling' ? 'bike' : currentMode === 'walking' ? 'foot' : 'car';
+      // geometries=geojson + overview=full gives exact road-snapped vertices
       const url = `https://router.project-osrm.org/route/v1/${profile}/${startPoint.lng},${startPoint.lat};${endPoint.lng},${endPoint.lat}?overview=full&geometries=geojson&steps=true`;
 
       try {
@@ -904,23 +1038,32 @@
         const route = data.routes[0];
         routeCoords = route.geometry.coordinates.map((c) => [c[1], c[0]]);
 
+        if (routeOutline) map.removeLayer(routeOutline);
         if (routeLine) map.removeLayer(routeLine);
-        routeLine = L.polyline(routeCoords, {
-          color: '#d94343',
-          weight: 6,
-          opacity: 0.92
+
+        // Black casing + Red inner line (Authentic GTA SA GPS line)
+        routeOutline = L.polyline(routeCoords, {
+          color: '#000000',
+          weight: 8,
+          opacity: 0.85,
+          smoothFactor: 0 // Zero simplification so line stays glued to curves at all zooms
         }).addTo(map);
 
-        map.fitBounds(routeLine.getBounds(), { padding: [60, 60] });
+        routeLine = L.polyline(routeCoords, {
+          color: '#d94343',
+          weight: 5,
+          opacity: 1,
+          smoothFactor: 0
+        }).addTo(map);
 
-        // Update Summary
+        map.fitBounds(routeLine.getBounds(), { padding: [60, 60], animate: false });
+
         const km = (route.distance / 1000).toFixed(2);
         const mins = Math.max(1, Math.round(route.duration / 60));
         document.getElementById('route-dist').textContent = `${km} KM`;
         document.getElementById('route-time').textContent = `${mins} MIN`;
         document.getElementById('route-summary').style.display = 'block';
 
-        // Turn-by-turn steps
         const turnList = document.getElementById('turn-list');
         turnList.innerHTML = '';
         route.legs[0].steps.forEach((step) => {
@@ -941,6 +1084,7 @@
     document.getElementById('clear-route-btn').addEventListener('click', () => {
       playSound('blip');
       if (simInterval) clearInterval(simInterval);
+      if (routeOutline) map.removeLayer(routeOutline);
       if (routeLine) map.removeLayer(routeLine);
       if (endMarker) map.removeLayer(endMarker);
       endPoint = null;
@@ -949,7 +1093,7 @@
       document.getElementById('route-summary').style.display = 'none';
     });
 
-    // Drive Simulator along calculated route
+    // Smooth Drive Simulator
     document.getElementById('sim-drive-btn').addEventListener('click', function () {
       if (!routeCoords.length) return;
       if (simInterval) {
@@ -971,11 +1115,11 @@
         }
         const [lat, lng] = routeCoords[idx];
         updateUserLocation(lat, lng, 10, 0, true);
-        idx += 2;
-      }, 250);
+        idx += 1;
+      }, 200);
     });
 
-    // Click anywhere on map to set Start / Destination / Save Blip
+    // Click anywhere on map
     map.on('click', (e) => {
       playSound('blip');
       const { lat, lng } = e.latlng;
@@ -1006,18 +1150,10 @@
     };
 
     // ==========================================
-    // 7. BOOKMARKS & LEGEND SYSTEM
+    // 8. SAVED BOOKMARKS & LEGEND TOGGLES
     // ==========================================
-    const DEFAULT_BOOKMARKS = [
-      { id: 1, name: 'Grove Street (Los Santos)', lat: 33.9214, lng: -118.2345, type: 'cj' },
-      { id: 2, name: 'Santa Maria Beach Pier', lat: 34.0092, lng: -118.4976, type: 'burger' },
-      { id: 3, name: 'Vinewood Sign Overlook', lat: 34.1341, lng: -118.3215, type: 'mission' },
-      { id: 4, name: 'Los Santos International', lat: 33.9416, lng: -118.4085, type: 'paynspray' }
-    ];
-
-    let bookmarks = JSON.parse(localStorage.getItem('gta_sa_bookmarks')) || DEFAULT_BOOKMARKS;
+    let bookmarks = JSON.parse(localStorage.getItem('gta_sa_bookmarks')) || [];
     let bookmarkMarkers = [];
-    let visibleTypes = { cj: true, mission: true, ammunation: true, burger: true, paynspray: true };
 
     function renderBookmarks() {
       localStorage.setItem('gta_sa_bookmarks', JSON.stringify(bookmarks));
@@ -1025,7 +1161,7 @@
       bookmarkMarkers = [];
 
       const list = document.getElementById('bookmarks-list');
-      list.innerHTML = '';
+      list.innerHTML = bookmarks.length ? '' : '<div style="color: var(--sa-muted); font-size: 13px;">Click any real-world icon or map spot to save blips here.</div>';
 
       bookmarks.forEach((bm) => {
         if (visibleTypes[bm.type] !== false) {
@@ -1051,7 +1187,7 @@
         `;
         item.querySelector('.list-item-info').addEventListener('click', () => {
           playSound('select');
-          map.flyTo([bm.lat, bm.lng], 15);
+          map.setView([bm.lat, bm.lng], 15, { animate: false });
         });
         item.querySelector('button').addEventListener('click', () => {
           playSound('blip');
@@ -1062,15 +1198,18 @@
       });
     }
 
+    window.saveNamedBlip = (lat, lng, name, type = 'mission') => {
+      map.closePopup();
+      bookmarks.push({ id: Date.now(), name, lat, lng, type });
+      renderBookmarks();
+      playSound('select');
+    };
+
     window.quickBookmark = (lat, lng) => {
       map.closePopup();
       const name = prompt('Enter GTA Blip Name:', 'Custom Safehouse');
       if (!name) return;
-      const types = ['cj', 'mission', 'ammunation', 'burger', 'paynspray'];
-      const type = types[Math.floor(Math.random() * types.length)];
-      bookmarks.push({ id: Date.now(), name, lat, lng, type });
-      renderBookmarks();
-      playSound('select');
+      window.saveNamedBlip(lat, lng, name, 'mission');
     };
 
     document.getElementById('save-center-btn').addEventListener('click', () => {
@@ -1106,13 +1245,14 @@
           this.textContent = visibleTypes[key] ? 'ON' : 'OFF';
           this.classList.toggle('active', visibleTypes[key]);
           renderBookmarks();
+          scanRealWorldIcons();
         });
         legendList.appendChild(row);
       });
     }
 
     // ==========================================
-    // 8. TABS, CLOCK & EASTER EGG CHEAT CODES
+    // 9. TABS, CLOCK & EASTER EGG CHEAT CODES
     // ==========================================
     document.querySelectorAll('.tab-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1130,7 +1270,6 @@
       panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
     });
 
-    // Real-time Clock
     setInterval(() => {
       const now = new Date();
       const hh = String(now.getHours()).padStart(2, '0');
@@ -1138,7 +1277,6 @@
       document.getElementById('sa-clock').textContent = `${hh}:${mm}`;
     }, 1000);
 
-    // Keyboard Cheat Codes
     let keyBuffer = '';
     let cash = 350000;
     window.addEventListener('keydown', (e) => {
@@ -1176,7 +1314,7 @@
     // Boot Sequence
     renderBookmarks();
     renderLegend();
-    // Automatically attempt to locate user on startup
+    scanRealWorldIcons();
     locateUser(true);
   </script>
 </body>
