@@ -856,11 +856,9 @@
       });
 
       // CartoDB Voyager styled with GTA SA Radar CSS filters
-      radarTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO | GTA SA Radar Theme',
-        subdomains: 'abcd',
+      radarTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        className: 'gta-sa-tiles'
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
 
       // Esri World Imagery for ROCKETMAN Aerial Mode
